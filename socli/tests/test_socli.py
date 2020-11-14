@@ -3,9 +3,12 @@ Tests for socli
 """
 
 import sys
+import traceback
 import socli.socli as _socli
 import socli.user as _user
 import socli.search as _search
+import json
+import pytest
 
 sys.path.append("..")
 
@@ -140,10 +143,17 @@ def test_user_json():
     except Exception:
         raise SoCLITestingException("User JSON test failed.")
 
-
+@pytest.mark.skip
 def test_searchSO():
     try:
-         _search.get_questions_for_query(squery)
+        _search.get_questions_for_query(squery)
+    except Exception:
+        raise SoCLITestingException("Search Stack Overflow test failed.")
+
+def test_searchDDG():
+    try:
+        _search.search_engine = 'ddg'
+        _search.get_questions_for_query_duckduckgo(squery)
     except Exception:
         raise SoCLITestingException("Search Stack Overflow test failed.")
 

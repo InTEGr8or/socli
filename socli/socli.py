@@ -13,6 +13,7 @@ import requests
 from bs4 import BeautifulSoup
 import urwid
 import urllib3
+import json
 
 try:
     import simplejson as json
@@ -98,16 +99,20 @@ def socli(query):
     """
     SoCLI Code
     :param query: Query to search on Stack Overflow.
-    If google_search is true uses Google search to find the best result.
+    If search_enging == 'google' is true uses Google search to find the best result.
     Else, use Stack Overflow default search mechanism.
     :return:
     """
     query = printer.urlencode(query)
     try:
-        if search.google_search:
+        if search.search_engine == 'google':
             questions = search.get_questions_for_query_google(query)
             res_url = questions[0][2]  # Gets the first result
             display_results(res_url)
+        elif search.search_engine == 'ddg':
+            questions = search.get_questions_for_query_duckduckgo(query)
+            res_url = questions[0][2]
+            display_results(search.so_url + res_url)  # Returned URL is relative to SO homepage
         else:
             questions = search.get_questions_for_query(query)
             res_url = questions[0][2]
@@ -278,7 +283,7 @@ def socli_browse_interactive(query_tag):
                 tui.question_post = self.cachedQuestions[index]
                 tui.MAIN_LOOP.widget = tui.question_post
             else:
-                if not search.google_search:
+                if not search.search_engine == 'google':
                     url = search.so_url + url
                 question_title, question_desc, question_stats, answers, comments, dup_url = \
                     search.get_question_stats_and_answer_and_comments(url)
@@ -372,11 +377,11 @@ def main():
 
     if namespace.sosearch:  # If --sosearch flag is present
         # Disables google search
-        search.google_search = False
+        search.search_engine = 'so'
 
     if namespace.tag:  # If --tag flag is present
         global tag
-        search.google_search = False
+        search.search_engine = 'so'
         tag = namespace.tag
         has_tags()  # Adds tags to StackOverflow url (when not using google search.
     if namespace.open_url:
@@ -448,7 +453,7 @@ def main():
 
     if namespace.browse:
         # Browse mode
-        search.google_search = False
+        search.search_engine = 'so'
         socli_browse_interactive(query_tag)
     elif namespace.query != [] or namespace.tag is not None:  # If query and tag are not both empty
         if namespace.interactive:

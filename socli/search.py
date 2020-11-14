@@ -2,6 +2,7 @@
 Contains all functions used for searching Stack Overflow and Google
 """
 
+from logging import debug
 import os
 import random
 import re
@@ -9,19 +10,23 @@ import sys
 import copy
 
 from bs4 import BeautifulSoup
+import json
 import requests
 import urwid
 
 import socli.printer
 import socli.tui
 
+debug_mode = True
 uas = []  # User agent list
 header = {}  # Request header
-google_search = True
+search_engine = "google" # using [so google ddg]
 so_url = "http://stackoverflow.com"  # Site URL
 so_qurl = "http://stackoverflow.com/search?q="  # Query URL
 so_burl = "https://stackoverflow.com/?tab="  # Assuming browse URL
 google_search_url = "https://www.google.com/search?q=site:stackoverflow.com+"  # Google search query URL
+ddg_search_url = "https://duckduckgo.com/?q=site%3Astackoverflow.com+" # DuckDuckGo search url
+ddg_search_url_js = "https://duckduckgo.com/d.js?q=site%3Astackoverflow.com+"
 
 
 def get_questions_for_query(query, count=10):
@@ -38,10 +43,14 @@ def get_questions_for_query(query, count=10):
     random_headers()
 
     search_res = requests.get(so_qurl + query, headers=header)
+    if(debug_mode):
+        with open("_so_response.htm", "w", encoding="utf-8") as f:
+            f.write(search_res.text.strip('\n\n'))
     captcha_check(search_res.url)
     soup = BeautifulSoup(search_res.text, 'html.parser')
+    soup.find_all("div", class_="question-summary")  # For explicitly raising exception
     try:
-        soup.find_all("div", class_="question-summary")[0]  # For explicitly raising exception
+        tmp = soup[0]
     except IndexError:
         socli.printer.print_warning("No results found...")
         sys.exit(0)
@@ -108,6 +117,50 @@ def get_questions_for_query_google(query, count=10):
         sys.exit(0)
     return questions
 
+def get_questions_for_query_duckduckgo(query, count=10):
+    """
+    Fetch questions for a query using Google search.
+    Returned question urls are URLS to SO homepage.
+    At most 10 questions are returned. (Can be altered by passing count)
+    :param query: User-entered query string
+    :return: list of [ (question_text, question_description, question_url) ]
+    """
+    i = 0
+    questions = []
+    random_headers()
+    search_results = requests.get(ddg_search_url_js + query, headers=header)
+    captcha_check(search_results.url)
+    # soup = BeautifulSoup(search_results.text, 'html.parser')
+    try:
+        results_json_regex = re.findall(r"(?!=\('d',)\[\{.*\}\]", search_results.text)[0]
+        results_obj = json.loads(results_json_regex)
+    except IndexError:
+        socli.printer.print_warning("No results found...")
+        sys.exit(0)
+    for result in results_obj:
+        if i == count:
+            break
+        try:
+            question_title = result['t'].replace(' - Stack Overflow', '')
+            question_desc = result['a']
+            question_url = result['u']  # Retrieves the Stack Overflow link
+
+            if question_url is None:
+                i = i - 1
+                continue
+
+            questions.append([question_title, question_desc, question_url])
+            i += 1
+        except NameError:
+            continue
+        except AttributeError:
+            continue
+
+    # Check if there are any valid question posts
+    if not questions:
+        socli.printer.print_warning("No results found...")
+        sys.exit(0)
+    return questions
 
 def get_comments(soup):
     """
@@ -336,7 +389,7 @@ def socli_interactive(query):
                 socli.tui.question_post = self.cachedQuestions[index]
                 socli.tui.MAIN_LOOP.widget = socli.tui.question_post
             else:
-                if not google_search:
+                if not search_engine == 'google':
                     url = so_url + url
                 question_title, question_desc, question_stats, answers, comments, dup_url = get_question_stats_and_answer_and_comments(url)
                 socli.tui.question_post = socli.tui.QuestionPage(
@@ -347,7 +400,7 @@ def socli_interactive(query):
     socli.tui.display_header = socli.tui.Header()
 
     try:
-        if google_search:
+        if search_engine == 'google':
             questions = get_questions_for_query_google(query)
         else:
             questions = get_questions_for_query(query)
@@ -384,7 +437,7 @@ def socli_manual_search(query, rn):
         count = 99
         res_url = None
         try:
-            if google_search:
+            if search_engine == 'google':
                 questions = get_questions_for_query_google(query, count)
                 res_url = questions[rn - 1][2]
             else:
@@ -441,7 +494,7 @@ def captcha_check(url):
     :param url: URL from Stack Overflow
     :return:
     """
-    if google_search:
+    if search_engine == 'google':
         google_error_display_msg = "Google thinks you're a bot because you're issuing too many queries too quickly!" + \
                                    " Now you'll have to wait about an hour before you're unblocked... :(. " \
                                    "Use the -s tag to search via Stack Overflow instead."
